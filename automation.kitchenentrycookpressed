@@ -1,0 +1,22 @@
+alias: KitchenEntryCookPressed
+description: ""
+trigger:
+  - platform: device
+    device_id: 3ca179f2d5b8720420e637c716a46ab9
+    domain: lutron_caseta
+    type: press
+    subtype: Cook
+action:
+  - target:
+      entity_id: input_datetime.kitchen_entry_position_3_keypad_cook_2_last_release
+    data:
+      timestamp: >-
+        {{ as_timestamp(state_attr('automation.kitchenentrycookreleased',
+        'last_triggered')) }}
+    action: input_datetime.set_datetime
+  - metadata: {}
+    data: {}
+    target:
+      entity_id: input_boolean.kitchen_entry_position_3_keypad_cook_2_is_pressed
+    action: input_boolean.turn_on
+mode: single
