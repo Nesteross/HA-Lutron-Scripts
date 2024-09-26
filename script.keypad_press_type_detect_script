@@ -1,0 +1,296 @@
+alias: Handle Keypad Press Script
+description: >-
+  Handles button presses on Lutron Keypads and acts based on Press, Press and
+  Hold, or Double Tap
+fields:
+  SourceDeviceId:
+    description: The Id of the Keypad whose button was pressed
+    example: 3ca179f2d5b8720420e637c716a46ab9
+  SyncDeviceId:
+    description: The Id of the keypad to sync button leds with
+    example: 3ca179f2d5b8720420e637c716a46ab9
+  SourceButtonStateEntityID:
+    description: The helper to track if a button is currently pressed
+    example: input_boolean.kitchen_entry_position_3_keypad_cook_2_is_pressed
+  SourceButtonLEDEntityID:
+    description: The LED associated with the button calling this script
+    example: switch.kitchen_entry_position_3_keypad_cook_led_2
+  SyncButtonLEDEntityID:
+    description: The button LED to sync with the button calling this script
+    example: switch.kitchen_entry_position_3_keypad_cook_led_2
+  PreviousReleaseEntityId:
+    description: >-
+      a datetime that holds the time the triggering button was previously
+      released (before this time)
+    example: input_datetime.kitchen_entry_position_3_keypad_cook_2_last_release
+  OnScene:
+    description: The scene when button is pressed for on
+    example: scene.kitchen_bright_cook
+  OffScene:
+    description: The scene when button is pressed for off
+    example: scene.kitchen_off
+  DoubleTapOnScript:
+    description: The scene when button is double tapped for on
+    example: scene.kitchen_cook_music
+  DoubleTapOffScript:
+    description: The scene when button is double tapped for off
+    example: scene.kitchen_cook_music_off
+  SourceAutomationID:
+    description: The press automation that called the script
+    example: automation.presscook
+  WaitForDoubleTap:
+    description: >-
+      Tell the script to wait for a double tap action. If true, the script waits
+      for a double tap and does not execute the press action if one occurs. If
+      not set or false, the script will execute the press action immediatly and 
+      if the double tap occurs, it will execute the double tap action next.
+  PressBehavior:
+    description: >-
+      Specify Toggle to execute the OFF action if the led of the button is lit.
+      default Specfiy Single to always run the On action
+  DoubleTapBehavior:
+    description: >-
+      Specify Toggle to execute the OFF action if the led of the button is lit.
+      default Specfiy Single to always run the On action
+variables:
+  StartTime: "{{ now() }}"
+  WaitForDoubleTap: |
+    {% if WaitForDoubleTap is not defined %} {{ false }} {% endif %}
+  PressBehavior: |
+    {% if PressBehavior is not defined %} {{ "toggle" }} {% endif %}
+  DoubleTapBehavior: |
+    {% if PressBehavior is not defined %} {{ "toggle" }} {% endif %}
+sequence:
+  - if:
+      - condition: template
+        value_template: >
+          {% if (as_timestamp(now()) -
+          as_timestamp(state_attr(SourceAutomationID, 'last_triggered')) |
+          int(0)) > 3 %}
+            {{ true }}
+          {% else %}
+            {{ false }}
+          {% endif %}
+    then:
+      - alias: Run the Press and Hold Action / Scene
+        repeat:
+          count: 20
+          sequence:
+            - metadata: {}
+              data: {}
+              target:
+                entity_id: "{{ SourceButtonLEDEntityID }}"
+              action: switch.toggle
+            - delay:
+                hours: 0
+                minutes: 0
+                seconds: 1
+                milliseconds: 0
+      - if:
+          - condition: template
+            value_template: "{{ OffScene.split('.')[0].lower() == 'scene' }}"
+        then:
+          - data:
+              entity_id: "{{ OffScene }}"
+              transition: 5
+            action: scene.turn_on
+          - delay:
+              seconds: 5
+        else:
+          - target:
+              entity_id: "{{ OffScene }}"
+            action: script.turn_on
+      - target:
+          entity_id: "{{ DoubleTapOffScript }}"
+        action: script.turn_on
+      - target:
+          device_id: "{{ SourceDeviceId }}"
+        action: switch.turn_off
+      - if:
+          - condition: template
+            value_template: "{{ SyncDeviceId is defined }}"
+        then:
+          - target:
+              device_id: "{{ SyncDeviceId }}"
+            action: switch.turn_off
+    else:
+      - parallel:
+          - repeat:
+              count: 1
+              sequence:
+                - wait_template: >-
+                    {% if (is_state(SourceButtonStateEntityID, "on")) %} {{ true
+                    }}  {% else %}  {{ false }}  {% endif %}
+                  timeout:
+                    milliseconds: 500
+                - if:
+                    - condition: template
+                      value_template: "{{ wait.completed }}"
+                  then:
+                    - alias: Run the Double Press Action / Scene
+                      if:
+                        - condition: template
+                          value_template: >-
+                            {{ is_state(SourceButtonLEDEntityID, 'off') or
+                            (DoubleTapBehavior == 'Single') }}
+                      then:
+                        - if:
+                            - condition: template
+                              value_template: "{{ OnScene.split('.')[0].lower() == 'scene' }}"
+                          then:
+                            - data:
+                                entity_id: "{{ OnScene }}"
+                                transition: 2
+                              action: scene.turn_on
+                          else:
+                            - target:
+                                entity_id: "{{ OnScene }}"
+                              action: script.turn_on
+                        - if:
+                            - condition: template
+                              value_template: >-
+                                {{ DoubleTapOnScript.split('.')[0].lower() ==
+                                'scene' }}
+                          then:
+                            - data:
+                                entity_id: "{{ DoubleTapOnScript }}"
+                                transition: 1
+                              action: scene.turn_on
+                          else:
+                            - target:
+                                entity_id: "{{ DoubleTapOnScript }}"
+                              action: script.turn_on
+                        - target:
+                            device_id: "{{ SourceDeviceId }}"
+                          action: switch.turn_off
+                        - delay:
+                            seconds: 1
+                        - target:
+                            entity_id: "{{ SourceButtonLEDEntityID }}"
+                          action: switch.turn_on
+                        - if:
+                            - condition: template
+                              value_template: "{{ SyncButtonLEDEntityID is defined }}"
+                          then:
+                            - target:
+                                entity_id: "{{ SyncButtonLEDEntityID }}"
+                              action: switch.turn_on
+                      else:
+                        - if:
+                            - condition: template
+                              value_template: "{{ WaitForDoubleTap == false }}"
+                          then:
+                            - if:
+                                - condition: template
+                                  value_template: >-
+                                    {{ OffScene.split('.')[0].lower() == 'scene'
+                                    }}
+                              then:
+                                - data:
+                                    entity_id: "{{ OffScene }}"
+                                    transition: 2
+                                  action: scene.turn_on
+                                - delay:
+                                    seconds: 2
+                              else:
+                                - target:
+                                    entity_id: "{{ OffScene }}"
+                                  action: script.turn_on
+                        - target:
+                            entity_id: "{{ DoubleTapOffScript }}"
+                          action: script.turn_on
+                        - target:
+                            device_id: "{{ SourceDeviceId }}"
+                          action: switch.turn_off
+                        - if:
+                            - condition: template
+                              value_template: "{{ SyncDeviceId is defined }}"
+                          then:
+                            - target:
+                                device_id: "{{ SyncDeviceId }}"
+                              action: switch.turn_off
+          - repeat:
+              count: 1
+              sequence:
+                - if:
+                    - condition: template
+                      value_template: "{{ WaitForDoubleTap == true }}"
+                  then:
+                    - delay:
+                        milliseconds: 500
+                - if:
+                    - condition: template
+                      value_template: >-
+                        {% if ( (as_timestamp(now()) -
+                        state_attr(PreviousReleaseEntityId, "timestamp" ) |
+                        int(0)) > 2 ) %}
+                          {{ true }}
+                        {% else %}
+                          {{ false }}
+                        {% endif %}
+                  then:
+                    - if:
+                        - condition: template
+                          value_template: >-
+                            {{ is_state(SourceButtonLEDEntityID, 'off') or
+                            (PressBehavior == 'Single') }}
+                      then:
+                        - if:
+                            - condition: template
+                              value_template: "{{ OnScene.split('.')[0].lower() == 'scene' }}"
+                          then:
+                            - data:
+                                entity_id: "{{ OnScene }}"
+                                transition: 1.5
+                              action: scene.turn_on
+                          else:
+                            - target:
+                                entity_id: "{{ OnScene }}"
+                              action: script.turn_on
+                        - target:
+                            device_id: "{{ SourceDeviceId }}"
+                          action: switch.turn_off
+                        - if:
+                            - condition: template
+                              value_template: "{{ SyncDeviceId is defined }}"
+                          then:
+                            - target:
+                                device_id: "{{ SyncDeviceId }}"
+                              action: switch.turn_off
+                        - target:
+                            entity_id: "{{ SourceButtonLEDEntityID }}"
+                          action: switch.turn_on
+                        - if:
+                            - condition: template
+                              value_template: "{{ SyncButtonLEDEntityID is defined }}"
+                          then:
+                            - target:
+                                entity_id: "{{ SyncButtonLEDEntityID }}"
+                              action: switch.turn_on
+                      else:
+                        - if:
+                            - condition: template
+                              value_template: "{{ OffScene.split('.')[0].lower() == 'scene' }}"
+                          then:
+                            - data:
+                                entity_id: "{{ OffScene }}"
+                                transition: 1.5
+                              action: scene.turn_on
+                            - delay:
+                                seconds: 1.5
+                          else:
+                            - target:
+                                entity_id: "{{ OffScene }}"
+                              action: script.turn_on
+                        - target:
+                            device_id: "{{ SourceDeviceId }}"
+                          action: switch.turn_off
+                        - if:
+                            - condition: template
+                              value_template: "{{ SyncDeviceId is defined }}"
+                          then:
+                            - target:
+                                device_id: "{{ SyncDeviceId }}"
+                              action: switch.turn_off
+mode: parallel
+max: 50
