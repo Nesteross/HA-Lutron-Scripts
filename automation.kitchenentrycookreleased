@@ -1,0 +1,31 @@
+alias: KitchenEntryCookRelease
+description: ""
+trigger:
+  - platform: device
+    device_id: 3ca179f2d5b8720420e637c716a46ab9
+    domain: lutron_caseta
+    type: release
+    subtype: Cook
+action:
+  - metadata: {}
+    data: {}
+    target:
+      entity_id: input_boolean.kitchen_entry_position_3_keypad_cook_2_is_pressed
+    action: input_boolean.turn_off
+  - target:
+      entity_id: script.keypad_press_type_detect_script
+    data:
+      variables:
+        SourceDeviceId: 3ca179f2d5b8720420e637c716a46ab9
+        SourceButtonStateEntityID: input_boolean.kitchen_entry_position_3_keypad_cook_2_is_pressed
+        SourceButtonLEDEntityID: switch.kitchen_entry_position_3_keypad_cook_led_2
+        PreviousReleaseEntityId: input_datetime.kitchen_entry_position_3_keypad_cook_2_last_release
+        OnScene: script.vk_kitchen_cook
+        OffScene: script.vk_kitchen_off
+        DoubleTapOnScript: script.vk_kitchen_cook
+        SourceAutomationID: automation.kitchenentrycookpressed
+        WaitForDoubleTap: true
+        PressBehavior: Toggle
+        DoubleTapBehavior: Single
+    action: script.turn_on
+mode: parallel
